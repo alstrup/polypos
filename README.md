@@ -27,7 +27,7 @@ where the polynomial is not positive.
 
 | goal | Lean time |
 |---|---|
-| T₈ example above (32 pieces) | under 1 s |
+| T₈ example above (32 pieces) | 1.8 s of kernel checking |
 | degree 12, near-touching at five points | 0.5 s of kernel checking |
 | `1 + x + x²/2 + x³/6 + x⁴/24 > 0` on [−10, 10] | 0.1 s |
 
