@@ -1,6 +1,6 @@
 # poly_pos
 
-A Lean 4 tactic that proves a polynomial in one real variable is positive on an interval:
+A Lean 4 tactic that proves a polynomial is positive on an interval or a box:
 
 ```lean
 import PolyPos.Tactic
@@ -50,9 +50,48 @@ Whole-goal kernel time with the tactic (best of three, on a loaded machine):
 | degree 12, coming within 10⁻⁶ of zero at five points | 0.21 s |
 | `1 + x + x²/2 + x³/6 + x⁴/24 > 0` on [−10, 10] | 0.09 s |
 
+## Several variables
+
+```lean
+-- the Motzkin polynomial is nonnegative but not a sum of squares
+example (x y : ℝ) (h1 : -1 ≤ x) (h2 : x ≤ 1) (h3 : -1 ≤ y) (h4 : y ≤ 1) :
+    0 < x ^ 4 * y ^ 2 + x ^ 2 * y ^ 4 - 3 * x ^ 2 * y ^ 2 + 1 + 1/100 := by
+  poly_pos
+```
+
+With two or more real variables, each bounded by rational constants in the context, the tactic
+works on the box (`PolyPos/Multi.lean`, `PolyPos/MultiMeta.lean`):
+
+- A form is a nested list, one level per variable, each level with its degree. Halving
+  variable `j` applies the one-variable subdivision at level `j`.
+- `PolyPos.Multi.checkK_sound` proves the certificate checker sound, with only Lean's standard
+  axioms. The checker carries every piece's coefficients and is written with recursors for the
+  kernel, as in the one-variable case.
+- `ring` proves that the starting form equals `L · p(x)`. The kernel never computes the
+  multivariate change of basis.
+- The certificate is built directly as a Lean term; elaborating it as syntax took longer than
+  checking it.
+- The search halves the variable that leaves the fewest non-positive coefficients, and falls
+  back to taking the variables in turn when that makes no progress.
+
+`nlinarith` fails on both Motzkin goals below, even with hints.
+
+| goal | leaves | kernel time |
+|---|---|---|
+| Motzkin + 1/100 on [−1, 1]² (the coefficients are positive without halving) | 1 | 0.13 s |
+| x² + y² + z² − xyz + 1/50 on [−1, 1]³ | 20 | 0.5 s |
+| x⁴y² + y⁴z² + z⁴x² − 3x²y²z² + 1/10 on [−1, 1]³ | 56 | 2.7 s |
+
+**Is a better search worth it?** The kernel check dominates: the search takes about a quarter
+of a second. A smaller certificate would shorten the check, so `bench/Opt.lean` computes the
+fewest pieces exactly, by dynamic programming over sub-boxes. On the three-variable Motzkin
+goal and on two valley-shaped goals in two variables, the greedy rule already finds the
+minimum, so a parallel search for smaller certificates (the role planned for Bend) would gain
+nothing on these goals. See `bench/opt_results.txt`.
+
 ## Limitations
 
-- One variable, on a bounded interval with rational endpoints.
+- Bounded intervals and boxes with rational endpoints.
 - Strict positivity: `x² ≥ 0` on [−1, 1] fails, since the polynomial touches 0 at x = 0.
 - Real coefficients that are not rational (`√2`, `π`) are not read.
 

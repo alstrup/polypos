@@ -1,4 +1,5 @@
 import PolyPos.Core
+import PolyPos.MultiMeta
 
 /-!
 # The `poly_pos` tactic
@@ -135,16 +136,13 @@ def bounds (x : Expr) : MetaM (Option ℚ × Option ℚ) := do
       if let some q ← constQ b then hi := some (match hi with | some h => min h q | none => q)
   return (lo, hi)
 
-/-- The real variable of the goal: the one free variable of type `ℝ` in `e`. -/
-def theVar (e : Expr) : MetaM Expr := do
+/-- The real variables of the goal: the free variables of type `ℝ` in `e`, in context order. -/
+def realVars (e : Expr) : MetaM (Array Expr) := do
   let fv := (collectFVars {} e).fvarIds
   let mut xs := #[]
-  for f in fv do
-    if ← isDefEq (← f.getType) q(ℝ) then xs := xs.push (mkFVar f)
-  match xs.toList with
-  | [x] => return x
-  | [] => throwError "poly_pos: the goal has no real variable"
-  | _ => throwError "poly_pos: the goal has several real variables {xs}; only one is supported"
+  for d in ← getLCtx do
+    if fv.contains d.fvarId && (← isDefEq d.type q(ℝ)) then xs := xs.push (mkFVar d.fvarId)
+  return xs
 
 /-- `poly_pos` proves that a polynomial in one real variable `x` is positive (or nonnegative)
 on an interval given by hypotheses `a ≤ x` and `x ≤ b` with rational `a`, `b`. -/
@@ -165,7 +163,20 @@ elab "poly_pos" : tactic => withMainContext do
     | _ => throwError "poly_pos: the goal must be `p < q`, `p ≤ q`, `p > q` or `p ≥ q`"
   unless ← isDefEq (← inferType a) q(ℝ) do throwError "poly_pos: the goal must be about real numbers"
   let e ← if (← constQ a) == some 0 then pure b else mkAppM ``HSub.hSub #[b, a]
-  let x ← theVar e
+  let xs ← realVars e
+  if xs.isEmpty then throwError "poly_pos: the goal has no real variable"
+  if xs.size > 1 then
+    let mut lo := #[]
+    let mut hi := #[]
+    for x in xs do
+      let (some l, some h) ← bounds x
+        | throwError "poly_pos: needs hypotheses `a ≤ {x}` and `{x} ≤ b` with rational constants a, b"
+      unless l < h do throwError "poly_pos: the interval [{l}, {h}] for {x} is empty or a point"
+      lo := lo.push l; hi := hi.push h
+    if e != b then evalTactic (← `(tactic| rw [← sub_pos]))
+    PolyPos.MultiMeta.prove e xs lo hi
+    return
+  let x := xs[0]!
   let p := qtrim (← reify x e)
   -- scale to integer coefficients
   let L : ℕ := p.foldl (fun l q => Nat.lcm l q.den) 1
