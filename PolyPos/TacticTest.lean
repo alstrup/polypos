@@ -11,4 +11,6 @@ example (x : ℝ) (h1 : 1/3 ≤ x) (h2 : x < 5/2) : x ^ 3 / 2 + 1 > x - x ^ 2 / 
 example (y : ℝ) (h1 : -2 ≤ y) (h2 : y ≤ 3) : (y - 1) * (y - 1) + 1/1000 ≥ 0 := by poly_pos
 
 -- a false goal is reported with a point
+/-- error: poly_pos: the polynomial is not positive at x = 1 -/
+#guard_msgs in
 example (x : ℝ) (h1 : 0 ≤ x) (h2 : x ≤ 2) : 0 < x ^ 2 - 2 * x + 99/100 := by poly_pos
