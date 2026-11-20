@@ -84,26 +84,34 @@ inductive Found where
   | deep : Found
   deriving Inhabited
 
-partial def search (cs : List ℤ) (A B D : ℤ) (depth : ℕ) : Found :=
-  let h := bern A B D cs
+/-- Search on the form `h` of the interval `[A/D, B/D]`, halving with `subL` / `subR`. -/
+partial def searchF (h : List ℤ) (A B D : ℤ) (depth : ℕ) : Found :=
   if allPos h then .ok .leaf
   else if h.head! ≤ 0 then .fails (mkRat A D.toNat)
   else if h.getLast! ≤ 0 then .fails (mkRat B D.toNat)
   else if depth == 0 then .deep
   else
-    match search cs (2 * A) (A + B) (2 * D) (depth - 1) with
+    match searchF (subL h) (2 * A) (A + B) (2 * D) (depth - 1) with
     | .ok l =>
-      match search cs (A + B) (2 * B) (2 * D) (depth - 1) with
+      match searchF (subR h) (A + B) (2 * B) (2 * D) (depth - 1) with
       | .ok r => .ok (.split l r)
       | other => other
     | other => other
 
-def certSyntax : Cert → MetaM Term
-  | .leaf => `(PolyPos.Cert.leaf)
-  | .split l r => do `(PolyPos.Cert.split $(← certSyntax l) $(← certSyntax r))
+def search (cs : List ℤ) (A B D : ℤ) (depth : ℕ) : Found := searchF (bern A B D cs) A B D depth
 
 def intSyntax (n : ℤ) : MetaM Term :=
   if n < 0 then `(- $(Syntax.mkNumLit (toString n.natAbs))) else pure (Syntax.mkNumLit (toString n))
+
+def listSyntax (h : List ℤ) : MetaM Term := do
+  let xs : Array Term ← h.toArray.mapM intSyntax
+  `([$xs,*])
+
+/-- The certificate with every piece's coefficients, for `checkWit`. -/
+partial def witSyntax (h : List ℤ) : Cert → MetaM Term
+  | .leaf => do `(PolyPos.WCert.leaf $(← listSyntax h))
+  | .split l r => do
+    `(PolyPos.WCert.split $(← listSyntax h) $(← witSyntax (subL h) l) $(← witSyntax (subR h) r))
 
 /-! ## The tactic -/
 
@@ -176,14 +184,14 @@ elab "poly_pos" : tactic => withMainContext do
   let csS ← `([$csElems,*])
   let xS ← Term.exprToSyntax x
   let eS ← Term.exprToSyntax e
-  let certS ← certSyntax cert
+  let certS ← witSyntax (bern A B D cs) cert
   let aS ← intSyntax A
   let bS ← intSyntax B
   let dS ← intSyntax D
   let lS := Syntax.mkNumLit (toString L)
   if e != b then evalTactic (← `(tactic| rw [← sub_pos]))
   evalTactic (← `(tactic| (
-    have hpos := PolyPos.check_sound ($csS : List ℤ) (by simp) $certS ($aS : ℤ) ($bS : ℤ) ($dS : ℤ)
+    have hpos := PolyPos.checkWit_sound ($csS : List ℤ) (by simp) $certS ($aS : ℤ) ($bS : ℤ) ($dS : ℤ)
       (by norm_num) (by norm_num) (by decide +kernel) $xS (by norm_num <;> linarith)
       (by norm_num <;> linarith)
     have heq : PolyPos.eval ($csS : List ℤ) $xS = ($lS : ℝ) * $eS := by
