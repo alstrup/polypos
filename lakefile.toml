@@ -1,0 +1,10 @@
+name = "polypos"
+version = "0.1.0"
+defaultTargets = ["PolyPos"]
+
+[[require]]
+name = "mathlib"
+path = "../../lean-profiling/mathlib4"
+
+[[lean_lib]]
+name = "PolyPos"
